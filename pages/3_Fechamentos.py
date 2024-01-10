@@ -2,8 +2,6 @@ from Dia import fetchDb
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-import altair as alt
-import matplotlib.pyplot as plt
 import datetime as dt
 
 st.set_page_config(page_title='Big Fantasy', page_icon=':bar_chart:',
