@@ -4,6 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import altair as alt
 import matplotlib.pyplot as plt
+import datetime as dt
 
 st.set_page_config(page_title='Big Fantasy', page_icon=':bar_chart:',
                    layout='wide')
@@ -29,51 +30,47 @@ def fetchFechSheet(conn, month):
     df.columns=dfColumns
     return df
 
-def fetchFechDb(conn):
-    fDb = {}
-    for i in range(1,13):
-        df = fetchFechSheet(conn, i)
-        #remove values without date
-        df = df.loc[df['Data'].notnull()]
-        #remove nulls
-        df = df.replace({None:'',})
-        #Date conversion
-        df['Data'] = pd.to_datetime(df['Data'])
-        #write to dictionary
-        fDb[invMonthDict[i]]=df
+def fetchFechDb(conn, month):
+    df = fetchFechSheet(conn, month)
+    #remove values without date
+    df = df.loc[df['Data'].notnull()]
+    #remove nulls
+    df = df.replace({None:'',})
+    #Date conversion
+    df['Data'] = pd.to_datetime(df['Data'])
+    return df
 
-    return fDb
 
-#create connection fechamento
+nowTimetuple = dt.datetime.now().timetuple()
+targetDay = nowTimetuple.tm_mday
+targetMonth = invMonthDict[nowTimetuple.tm_mon][:3]
+
+#create connection fechamento 2024
 connF = st.connection("gsheets2", type=GSheetsConnection)
-st.session_state['connF'] = connF
+st.session_state['connF24'] = connF
+db2024 = fetchFechDb(connF, targetMonth)
+db2024 = db2024.loc[(db2024['Data'].dt.day > targetDay-3) & 
+                    (db2024['Data'].dt.day < targetDay+3)]
 
-dfDict = fetchFechDb(connF)
-fullDb = pd.DataFrame()
-for month in monthsDict:
-    fullDb = pd.concat([fullDb,dfDict[month]]) 
+#create connection fechamento 2023
+connF = st.connection("gsheets3", type=GSheetsConnection)
+st.session_state['connF23'] = connF
+db2023 = fetchFechDb(connF, targetMonth)
+db2023 = db2023.loc[(db2023['Data'].dt.day > targetDay-3) & 
+                    (db2023['Data'].dt.day < targetDay+3)]
 
-chartDf = pd.DataFrame()
-totalList = []
-monthList = []
-for month in monthsDict:
-    totalList.append(dfDict[month]['comp_soma'].sum())
-    monthList.append(month)
-chartDf['Mês'] = monthList
-chartDf['Total'] = totalList
-chart = alt.Chart(chartDf).mark_bar().encode(
-    x=alt.X('Mês',sort=list(monthsDict.keys())),
-    y='Total')
-st.altair_chart(chart,use_container_width=True)
+#dataframe format
+drawColumns = ['Data','Dia','comp_soma']
+colConfigDict = {
+    'Data':st.column_config.DateColumn(format='DD/MM/YY'),
+    'comp_soma':st.column_config.NumberColumn(format='R$ %.2f'),
+    }
 
-fullDb['Month'] = fullDb['Data'].dt.month
-dfGroupMonth = fullDb.groupby('Month')['comp_soma','comp_din','comp_cartao','Ana','Lucia','Marina'].sum().reset_index()
-
-fig, ax = plt.subplots()
-ax.bar(dfGroupMonth['Month'],dfGroupMonth['comp_din'])
-ax.bar(dfGroupMonth['Month'],dfGroupMonth['comp_cartao'],bottom=dfGroupMonth['comp_din'])
-st.pyplot(fig)
-#chart2 = alt.Chart(dfGroupMonth).mark_bar().encode(
-#    x='Month',
-#    y='comp_soma')
-#st.altair_chart(chart2,use_container_width=True)
+#draw
+col1, col2 = st.columns(2)
+col1.write('2024')
+col1.dataframe(db2024[drawColumns],use_container_width=True,
+             column_config=colConfigDict, hide_index=True)
+col2.write('2023')
+col2.dataframe(db2023[drawColumns],use_container_width=True,
+             column_config=colConfigDict, hide_index=True)
